@@ -17,10 +17,7 @@ local MUTE_TIME = 60*10
 
 local function init_player_state(player_name)
     if not PLAYER_KICKS[player_name] then PLAYER_KICKS[player_name] = 0 end
-    if not PLAYERS_MSG[player_name] then PLAYERS_MSG[player_name] = {} end
-    if not PLAYERS_FREQ[player_name] then
-        PLAYERS_FREQ[player_name] = {0, 0, minetest.get_us_time(), 0}
-    end
+    PLAYERS_MSG[player_name] = {}
 end
 
 local function increment_spam_counter(name)
@@ -66,28 +63,35 @@ local function handle_message(name, message)
     else
         PLAYERS_MSG[name][message] = {1, current_time}
     end
+	local warns = PLAYERS_FREQ[name][4]
+    local amount = PLAYERS_FREQ[name][2]
+    local speed = PLAYERS_FREQ[name][1]
+    local delay = minetest.get_us_time() - PLAYERS_FREQ[name][3]
+    speed = (speed * amount + delay) / (amount + 1)
 
-    local player_freq = PLAYERS_FREQ[name]
-    local speed = (player_freq[1] * player_freq[2] + (current_time - player_freq[3])) / (player_freq[2] + 1)
-
-    if player_freq[2] >= SPAM_WARN then
-        if player_freq[4] + 1 >= SPAM_KICK - SPAM_WARN then
+    if amount >= warns then
+        if warns + 1 >= SPAM_KICK - SPAM_WARN then
             if increment_spam_counter(name) then
                 return true
             end
         elseif speed <= SPAM_SPEED_MSECS then
             minetest.chat_send_player(name, WARNING_COLOR .. "Warning! You're sending messages too fast. Wait at least " .. SPAM_SPEED .. " seconds.")
-            player_freq[4] = player_freq[4] + 1
-            player_freq[1] = SPAM_SPEED_MSECS
-            player_freq[2] = SPAM_WARN
+            warns = warns + 1
+            speed = SPAM_SPEED_MSECS
+            amount = SPAM_WARN
         else
-            player_freq[1] = 0
-            player_freq[2] = 0
-            player_freq[4] = 0
+            speed = 0
+            amount = 0
+            warns = 0
         end
     end
 
-    PLAYERS_FREQ[name] = {player_freq[1], player_freq[2] + 1, current_time, player_freq[4]}
+    PLAYERS_FREQ[name] = {
+        speed,
+        amount + 1,
+        minetest.get_us_time(),
+        warns
+    }
 
     return false
 end
@@ -132,8 +136,7 @@ minetest.register_on_leaveplayer(function(player)
 end)
 
 minetest.register_on_joinplayer(function(player)
-    local pname = player:get_player_name()
-    init_player_state(pname)
+    init_player_state(player:get_player_name())
 end)
 
 minetest.register_on_chat_message(function(name, message)
